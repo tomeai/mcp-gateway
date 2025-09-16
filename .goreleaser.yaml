@@ -1,0 +1,137 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+# Basename for the build artifacts, used in the archive names and Docker images.
+project_name: mcpjungle
+
+before:
+  hooks:
+    - go test -v ./...
+    - go mod tidy
+
+builds:
+  - id: mcpjungle
+    main: ./main.go
+    binary: mcpjungle
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/mcpjungle/mcpjungle/cmd.Version={{.Version}}
+    env:
+      - CGO_ENABLED=0
+      - GOWORK=off
+    overrides:
+      # macOS builds - use CGO for better compatibility
+      # overrides for darwin builds to enable CGO
+      - goos: darwin
+        goarch: amd64
+        env:
+          - CGO_ENABLED=1
+          - GOWORK=off
+      - goos: darwin
+        goarch: arm64
+        env:
+          - CGO_ENABLED=1
+          - GOWORK=off
+
+archives:
+  - formats: [tar.gz]
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+signs:
+  - artifacts: checksum
+
+changelog:
+  disable: true
+
+brews:
+  - url_template: "https://github.com/mcpjungle/MCPJungle/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    commit_author:
+      name: "Raghav Dua"
+    homepage: "https://github.com/mcpjungle/MCPJungle"
+    description: "Self-hosted MCP tool registry for enterprise AI agents"
+    repository:
+      owner: "mcpjungle"
+      name: "homebrew-mcpjungle"
+
+dockers:
+  - dockerfile: Dockerfile
+    image_templates:
+      - "mcpjungle/mcpjungle:{{ .Tag }}-amd64"
+      - "mcpjungle/mcpjungle:latest-amd64"
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
+    goarch: amd64
+
+  - dockerfile: Dockerfile
+    image_templates:
+      - "mcpjungle/mcpjungle:{{ .Tag }}-arm64"
+      - "mcpjungle/mcpjungle:latest-arm64"
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/arm64"
+    goarch: arm64
+
+  - dockerfile: stdio.Dockerfile
+    image_templates:
+      - "mcpjungle/mcpjungle:{{ .Tag }}-stdio-amd64"
+      - "mcpjungle/mcpjungle:latest-stdio-amd64"
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
+    goarch: amd64
+
+  - dockerfile: stdio.Dockerfile
+    image_templates:
+      - "mcpjungle/mcpjungle:{{ .Tag }}-stdio-arm64"
+      - "mcpjungle/mcpjungle:latest-stdio-arm64"
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/arm64"
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "mcpjungle/mcpjungle:{{ .Tag }}"
+    image_templates:
+      - "mcpjungle/mcpjungle:{{ .Tag }}-amd64"
+      - "mcpjungle/mcpjungle:{{ .Tag }}-arm64"
+
+  - name_template: "mcpjungle/mcpjungle:latest"
+    image_templates:
+      - "mcpjungle/mcpjungle:latest-amd64"
+      - "mcpjungle/mcpjungle:latest-arm64"
+
+  - name_template: "mcpjungle/mcpjungle:{{ .Tag }}-stdio"
+    image_templates:
+      - "mcpjungle/mcpjungle:{{ .Tag }}-stdio-amd64"
+      - "mcpjungle/mcpjungle:{{ .Tag }}-stdio-arm64"
+
+  - name_template: "mcpjungle/mcpjungle:latest-stdio"
+    image_templates:
+      - "mcpjungle/mcpjungle:latest-stdio-amd64"
+      - "mcpjungle/mcpjungle:latest-stdio-arm64"

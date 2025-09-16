@@ -1,0 +1,80 @@
+services:
+  wemcp-db:
+    image: postgres:latest
+    container_name: wemcp-db
+    environment:
+      POSTGRES_USER: wemcp
+      POSTGRES_PASSWORD: wemcp123456
+      POSTGRES_DB: wemcp
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "PGPASSWORD=wemcp123456 pg_isready -U wemcp" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  wemcp-pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: wemcp-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@wemcp.cn
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - wemcp-db
+
+  wemcp-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wemcp-gateway
+    environment:
+      DATABASE_URL: postgres://wemcp:wemcp123456@db:5432/wemcp
+      SERVER_MODE: ${SERVER_MODE:-production}
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  wemcp-prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: wemcp-prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    volumes:
+      - prometheus_data:/prometheus
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+    depends_on:
+      - wemcp-gateway
+    restart: unless-stopped
+
+configs:
+  prometheus_config:
+    content: |
+      global:
+        scrape_interval: 15s
+        evaluation_interval: 30s
+
+      scrape_configs:
+        - job_name: 'wemcp-gateway'
+          static_configs:
+            - targets: ['wemcp-gateway:8080']
+          metrics_path: '/metrics'
+          scrape_interval: 15s
+
+volumes:
+  db_data:
+  prometheus_data:
