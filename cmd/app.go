@@ -90,7 +90,7 @@ func NewHttpServer(lc fx.Lifecycle, server *api.Server, otel *telemetry.Provider
 	hook := fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			go func() {
-				if err := server.Start(); err != nil {
+				if err := server.Server.ListenAndServe(); err != nil {
 					logger.Error("http server start failed", zap.Error(err))
 				}
 			}()
@@ -98,7 +98,7 @@ func NewHttpServer(lc fx.Lifecycle, server *api.Server, otel *telemetry.Provider
 		},
 		OnStop: func(ctx context.Context) error {
 			var errs []error
-			if err := server.Shutdown(ctx); err != nil {
+			if err := server.Server.Shutdown(ctx); err != nil {
 				logger.Error("http server shutdown failed", zap.Error(err))
 				errs = append(errs, err)
 			}

@@ -58,7 +58,7 @@ func NewServer(ctx *cli.Context, otelProviders *telemetry.Providers, mcpClientSe
 	return s, nil
 }
 
-func (s *Server) setupRouter() (*gin.Engine, error) {
+func (s *Server) setupRouter() (*http.ServeMux, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
@@ -78,27 +78,92 @@ func (s *Server) setupRouter() (*gin.Engine, error) {
 		},
 	)
 
-	mcpServer := NewMCPServer(s.ctx, "", "")
-	// streamable http
-	r.Any(
-		"/:name/http",
-		//s.checkAuthForMcpProxyAccess(),
-		gin.WrapH(mcpServer.httpHandler),
-	)
+	httpMux := http.NewServeMux()
 
-	// sse
-	r.Any(
-		"/:name/sse",
-		//s.checkAuthForMcpProxyAccess(),
-		gin.WrapH(mcpServer.sseHandler.SSEHandler()),
-	)
-	r.Any(
-		"/:name/message",
-		//s.checkAuthForMcpProxyAccess(),
-		gin.WrapH(mcpServer.sseHandler.MessageHandler()),
-	)
-	return r, nil
+	httpMux.Handle("/", r)
+
+	httpMux.Handle("/{type}/{name}/", NewDynamicMCPServer())
+
+	return httpMux, nil
 }
+
+//func (s *Server) setupRouter() (*gin.Engine, error) {
+//	gin.SetMode(gin.ReleaseMode)
+//	r := gin.Default()
+//
+//	// if otel is enabled, setup prometheus metrics endpoint
+//	if s.otelProviders.IsEnabled() {
+//		// instrument gin
+//		r.Use(otelgin.Middleware(s.otelProviders.ServiceName()))
+//
+//		// expose prometheus metrics endpoint
+//		r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+//	}
+//
+//	r.GET(
+//		"/health",
+//		func(c *gin.Context) {
+//			c.JSON(200, gin.H{"status": "ok"})
+//		},
+//	)
+//
+//	mcpServerName := "github"
+//	mcpServer, err := NewMCPServer(s.ctx, mcpServerName)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	r.Any("/github/", gin.WrapH(mcpServer.sseHandler))
+//
+//	return r, nil
+//}
+
+//func (s *Server) setupRouter() (*gin.Engine, error) {
+//	gin.SetMode(gin.ReleaseMode)
+//	r := gin.Default()
+//
+//	// if otel is enabled, setup prometheus metrics endpoint
+//	if s.otelProviders.IsEnabled() {
+//		// instrument gin
+//		r.Use(otelgin.Middleware(s.otelProviders.ServiceName()))
+//
+//		// expose prometheus metrics endpoint
+//		r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+//	}
+//
+//	r.GET(
+//		"/health",
+//		func(c *gin.Context) {
+//			c.JSON(200, gin.H{"status": "ok"})
+//		},
+//	)
+//
+//	// 管理接口  1. jwt+mcpServerConfig  存储到数据库  2. 根据 jwt+macServerName 获取配置
+//	mcpServer, err := NewMCPServer(s.ctx, "github")
+//	if err != nil {
+//		return nil, err
+//	}
+//	// streamable http
+//	r.Any(
+//		"/:name/http",
+//		//s.checkAuthForMcpProxyAccess(),
+//		gin.WrapH(mcpServer.httpHandler),
+//	)
+//
+//	// sse
+//	r.Any(
+//		"/:name/sse",
+//		//s.checkAuthForMcpProxyAccess(),
+//		gin.WrapH(mcpServer.sseHandler.SSEHandler()),
+//	)
+//
+//	r.Any(
+//		"/:name/message",
+//		//s.checkAuthForMcpProxyAccess(),
+//		gin.WrapH(mcpServer.sseHandler.MessageHandler()),
+//	)
+//	return r, nil
+//}
 
 // Start runs the Gin server (blocking call)
 func (s *Server) Start() error {
