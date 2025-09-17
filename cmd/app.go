@@ -8,6 +8,7 @@ import (
 	"github.com/tomeai/mcp-gateway/internal/db"
 	"github.com/tomeai/mcp-gateway/internal/telemetry"
 	"github.com/tomeai/mcp-gateway/repository"
+	"github.com/tomeai/mcp-gateway/service"
 	"github.com/tomeai/mcp-gateway/utils"
 	"github.com/urfave/cli/v2"
 	"go.uber.org/fx"
@@ -62,9 +63,10 @@ func (app *App) Run(args []string) {
 			}),
 		}
 		options = append(options,
-			fx.Provide(api.NewDynamicMCPServer),
+			fx.Provide(service.NewDynamicMCPServer),
 			fx.Provide(api.NewOtel),
 			fx.Provide(db.NewDBConnection),
+			fx.Provide(repository.NewMcpServerService),
 			fx.Provide(repository.NewMCPClientService),
 			fx.Provide(api.NewServer),
 			fx.Invoke(NewHttpServer),
@@ -91,7 +93,7 @@ func NewHttpServer(lc fx.Lifecycle, server *api.Server, otel *telemetry.Provider
 	hook := fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			go func() {
-				if err := server.Server.ListenAndServe(); err != nil {
+				if err := server.ListenAndServe(); err != nil {
 					logger.Error("http server start failed", zap.Error(err))
 				}
 			}()
@@ -99,7 +101,7 @@ func NewHttpServer(lc fx.Lifecycle, server *api.Server, otel *telemetry.Provider
 		},
 		OnStop: func(ctx context.Context) error {
 			var errs []error
-			if err := server.Server.Shutdown(ctx); err != nil {
+			if err := server.Shutdown(ctx); err != nil {
 				logger.Error("http server shutdown failed", zap.Error(err))
 				errs = append(errs, err)
 			}

@@ -2,7 +2,9 @@ package db
 
 import (
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/tomeai/mcp-gateway/model"
 	"github.com/urfave/cli/v2"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -26,6 +28,12 @@ func NewDBConnection(ctx *cli.Context) (*gorm.DB, error) {
 	db, err := gorm.Open(dialector, c)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+	if gin.Mode() != gin.ReleaseMode {
+		err := db.AutoMigrate(&model.McpServer{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to migrate database: %w", err)
+		}
 	}
 	return db, nil
 }

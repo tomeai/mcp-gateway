@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/tomeai/mcp-gateway/internal/telemetry"
 	"github.com/tomeai/mcp-gateway/repository"
+	"github.com/tomeai/mcp-gateway/service"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/zap"
@@ -19,7 +20,7 @@ type Server struct {
 
 	mcpClientService *repository.McpClientService
 
-	dynamicMCPServer *DynamicMCPServer
+	dynamicMCPServer *service.DynamicMCPServer
 
 	otelProviders *telemetry.Providers
 	metrics       telemetry.CustomMetrics
@@ -30,13 +31,13 @@ type Server struct {
 func NewOtel(ctx *cli.Context) (*telemetry.Providers, error) {
 	otelConfig := &telemetry.Config{
 		ServiceName: "wemcp-gateway",
-		Enabled:     true,
+		Enabled:     gin.Mode() == gin.ReleaseMode,
 	}
 	otelProviders, err := telemetry.Init(ctx.Context, otelConfig)
 	return otelProviders, err
 }
 
-func NewServer(ctx *cli.Context, dynamicMCPServer *DynamicMCPServer, otelProviders *telemetry.Providers, mcpClientService *repository.McpClientService, logger *zap.Logger) (*Server, error) {
+func NewServer(ctx *cli.Context, dynamicMCPServer *service.DynamicMCPServer, otelProviders *telemetry.Providers, mcpClientService *repository.McpClientService, logger *zap.Logger) (*Server, error) {
 	mcpMetrics := telemetry.NewNoopCustomMetrics()
 
 	s := &Server{
@@ -85,88 +86,10 @@ func (s *Server) setupRouter() (*http.ServeMux, error) {
 
 	httpMux.Handle("/", r)
 
-	httpMux.Handle("/{type}/{name}/", s.dynamicMCPServer)
+	httpMux.Handle("/mcp/{name}/", s.dynamicMCPServer)
 
 	return httpMux, nil
 }
-
-//func (s *Server) setupRouter() (*gin.Engine, error) {
-//	gin.SetMode(gin.ReleaseMode)
-//	r := gin.Default()
-//
-//	// if otel is enabled, setup prometheus metrics endpoint
-//	if s.otelProviders.IsEnabled() {
-//		// instrument gin
-//		r.Use(otelgin.Middleware(s.otelProviders.ServiceName()))
-//
-//		// expose prometheus metrics endpoint
-//		r.GET("/metrics", gin.WrapH(promhttp.Handler()))
-//	}
-//
-//	r.GET(
-//		"/health",
-//		func(c *gin.Context) {
-//			c.JSON(200, gin.H{"status": "ok"})
-//		},
-//	)
-//
-//	mcpServerName := "github"
-//	mcpServer, err := NewMCPServer(s.ctx, mcpServerName)
-//	if err != nil {
-//		return nil, err
-//	}
-//
-//	r.Any("/github/", gin.WrapH(mcpServer.sseHandler))
-//
-//	return r, nil
-//}
-
-//func (s *Server) setupRouter() (*gin.Engine, error) {
-//	gin.SetMode(gin.ReleaseMode)
-//	r := gin.Default()
-//
-//	// if otel is enabled, setup prometheus metrics endpoint
-//	if s.otelProviders.IsEnabled() {
-//		// instrument gin
-//		r.Use(otelgin.Middleware(s.otelProviders.ServiceName()))
-//
-//		// expose prometheus metrics endpoint
-//		r.GET("/metrics", gin.WrapH(promhttp.Handler()))
-//	}
-//
-//	r.GET(
-//		"/health",
-//		func(c *gin.Context) {
-//			c.JSON(200, gin.H{"status": "ok"})
-//		},
-//	)
-//
-//	// 管理接口  1. jwt+mcpServerConfig  存储到数据库  2. 根据 jwt+macServerName 获取配置
-//	mcpServer, err := NewMCPServer(s.ctx, "github")
-//	if err != nil {
-//		return nil, err
-//	}
-//	// streamable http
-//	r.Any(
-//		"/:name/http",
-//		//s.checkAuthForMcpProxyAccess(),
-//		gin.WrapH(mcpServer.httpHandler),
-//	)
-//
-//	// sse
-//	r.Any(
-//		"/:name/sse",
-//		//s.checkAuthForMcpProxyAccess(),
-//		gin.WrapH(mcpServer.sseHandler.SSEHandler()),
-//	)
-//
-//	r.Any(
-//		"/:name/message",
-//		//s.checkAuthForMcpProxyAccess(),
-//		gin.WrapH(mcpServer.sseHandler.MessageHandler()),
-//	)
-//	return r, nil
-//}
 
 // Start runs the Gin server (blocking call)
 func (s *Server) Start() error {
