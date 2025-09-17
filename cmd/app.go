@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/tomeai/mcp-gateway/internal/api"
+	"github.com/tomeai/mcp-gateway/api"
 	"github.com/tomeai/mcp-gateway/internal/db"
-	"github.com/tomeai/mcp-gateway/internal/service/mcpclient"
 	"github.com/tomeai/mcp-gateway/internal/telemetry"
+	"github.com/tomeai/mcp-gateway/repository"
 	"github.com/tomeai/mcp-gateway/utils"
 	"github.com/urfave/cli/v2"
 	"go.uber.org/fx"
@@ -63,7 +64,7 @@ func (app *App) Run(args []string) {
 		options = append(options,
 			fx.Provide(api.NewOtel),
 			fx.Provide(db.NewDBConnection),
-			fx.Provide(mcpclient.NewMCPClientService),
+			fx.Provide(repository.NewMCPClientService),
 			fx.Provide(api.NewServer),
 			fx.Invoke(NewHttpServer),
 		)
@@ -73,7 +74,7 @@ func (app *App) Run(args []string) {
 		}
 
 		<-app.exitChan
-		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := depInj.Stop(stopCtx); err != nil {
 			fmt.Printf("[Fx] ERROR: Failed to stop cleanly: %v\n", err)
@@ -86,22 +87,29 @@ func (app *App) Run(args []string) {
 }
 
 func NewHttpServer(lc fx.Lifecycle, server *api.Server, otel *telemetry.Providers, logger *zap.Logger) {
-	lc.Append(fx.Hook{
+	hook := fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			go func() {
 				if err := server.Start(); err != nil {
-					fmt.Printf("[Fx] ERROR: Failed to start server: %v\n", err)
+					logger.Error("http server start failed", zap.Error(err))
 				}
 			}()
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
-			if err := server.Server.Shutdown(ctx); err != nil {
-				logger.Error("HTTP server Shutdown", zap.Error(err))
+			var errs []error
+			if err := server.Shutdown(ctx); err != nil {
+				logger.Error("http server shutdown failed", zap.Error(err))
+				errs = append(errs, err)
 			}
-			return otel.Shutdown(ctx)
+			if err := otel.Shutdown(ctx); err != nil {
+				logger.Error("otel shutdown failed", zap.Error(err))
+				errs = append(errs, err)
+			}
+			return errors.Join(errs...)
 		},
-	})
+	}
+	lc.Append(hook)
 }
 
 func main() {

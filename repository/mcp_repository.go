@@ -1,8 +1,8 @@
-package mcpclient
+package repository
 
 import (
 	"errors"
-	"github.com/tomeai/mcp-gateway/internal/model"
+	"github.com/tomeai/mcp-gateway/model"
 	"gorm.io/gorm"
 )
 

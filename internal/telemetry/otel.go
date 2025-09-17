@@ -35,7 +35,7 @@ func Init(ctx context.Context, config *Config) (*Providers, error) {
 		}, nil
 	}
 
-	// Create resource with service information
+	// Create resource with repository information
 	res, err := sdkresource.New(
 		ctx,
 		sdkresource.WithFromEnv(),
@@ -64,7 +64,7 @@ func Init(ctx context.Context, config *Config) (*Providers, error) {
 	// Set the global meter provider
 	otel.SetMeterProvider(meterProvider)
 
-	// Create meter for the service
+	// Create meter for the repository
 	meter := meterProvider.Meter(config.ServiceName)
 
 	providers := &Providers{
@@ -93,7 +93,7 @@ func (p *Providers) IsEnabled() bool {
 	return p.Config.Enabled
 }
 
-// ServiceName returns the service name configured for otel
+// ServiceName returns the repository name configured for otel
 func (p *Providers) ServiceName() string {
 	return p.Config.ServiceName
 }

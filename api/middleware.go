@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"github.com/gin-gonic/gin"
-	"github.com/tomeai/mcp-gateway/internal/model"
+	"github.com/tomeai/mcp-gateway/model"
 	"net/http"
 	"strings"
 )

@@ -4,10 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/mark3labs/mcp-go/server"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/tomeai/mcp-gateway/internal/service/mcpclient"
 	"github.com/tomeai/mcp-gateway/internal/telemetry"
+	"github.com/tomeai/mcp-gateway/repository"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/zap"
@@ -18,11 +17,7 @@ type Server struct {
 	ctx *cli.Context
 	*http.Server
 
-	mcpClientService *mcpclient.McpClientService
-
-	// server
-	httpMcpProxyServer *server.MCPServer
-	sseMcpProxyServer  *server.MCPServer
+	mcpClientService *repository.McpClientService
 
 	otelProviders *telemetry.Providers
 	metrics       telemetry.CustomMetrics
@@ -39,28 +34,15 @@ func NewOtel(ctx *cli.Context) (*telemetry.Providers, error) {
 	return otelProviders, err
 }
 
-func NewServer(ctx *cli.Context, otelProviders *telemetry.Providers, mcpClientService *mcpclient.McpClientService, logger *zap.Logger) (*Server, error) {
-
-	httpProxyServer := server.NewMCPServer(
-		"WeMCP gateway Server for streamable HTTP transport",
-		"0.0.1",
-		server.WithToolCapabilities(true),
-	)
-	sseMcpProxyServer := server.NewMCPServer(
-		"WeMCP gateway Server for SSE transport",
-		"0.0.1",
-		server.WithToolCapabilities(true),
-	)
-
+func NewServer(ctx *cli.Context, otelProviders *telemetry.Providers, mcpClientService *repository.McpClientService, logger *zap.Logger) (*Server, error) {
 	mcpMetrics := telemetry.NewNoopCustomMetrics()
 
 	s := &Server{
-		httpMcpProxyServer: httpProxyServer,
-		sseMcpProxyServer:  sseMcpProxyServer,
-		mcpClientService:   mcpClientService,
-		otelProviders:      otelProviders,
-		metrics:            mcpMetrics,
-		logger:             logger,
+		mcpClientService: mcpClientService,
+		otelProviders:    otelProviders,
+		metrics:          mcpMetrics,
+		logger:           logger,
+		ctx:              ctx,
 	}
 
 	// Set up the router after the server is fully initialized
@@ -96,27 +78,25 @@ func (s *Server) setupRouter() (*gin.Engine, error) {
 		},
 	)
 
-	// Set up the MCP proxy server on /mcp
-	streamableHTTPServer := server.NewStreamableHTTPServer(s.httpMcpProxyServer)
+	mcpServer := NewMCPServer(s.ctx, "", "")
+	// streamable http
 	r.Any(
-		"/mcp",
+		"/:name/http",
 		//s.checkAuthForMcpProxyAccess(),
-		gin.WrapH(streamableHTTPServer),
+		gin.WrapH(mcpServer.httpHandler),
 	)
 
-	// Set up the SSE transport-based MCP proxy server for the global /sse endpoint
-	sseServer := server.NewSSEServer(s.sseMcpProxyServer)
+	// sse
 	r.Any(
-		"/sse",
+		"/:name/sse",
 		//s.checkAuthForMcpProxyAccess(),
-		gin.WrapH(sseServer.SSEHandler()),
+		gin.WrapH(mcpServer.sseHandler.SSEHandler()),
 	)
 	r.Any(
-		"/message",
+		"/:name/message",
 		//s.checkAuthForMcpProxyAccess(),
-		gin.WrapH(sseServer.MessageHandler()),
+		gin.WrapH(mcpServer.sseHandler.MessageHandler()),
 	)
-
 	return r, nil
 }
 
