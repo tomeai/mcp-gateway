@@ -6,17 +6,20 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/tomeai/mcp-gateway/model"
 	"github.com/tomeai/mcp-gateway/service"
+	"go.uber.org/zap"
 	"net/http"
 	"time"
 )
 
 type DynamicMCPServer struct {
-	mcpSProxyServer *server.MCPServer
+	logger *zap.Logger
 }
 
-func NewDynamicMCPServer() *DynamicMCPServer {
+func NewDynamicMCPServer(logger *zap.Logger) *DynamicMCPServer {
 	// load from db by uid && mcpServerName
-	return &DynamicMCPServer{}
+	return &DynamicMCPServer{
+		logger: logger,
+	}
 }
 
 func (m *DynamicMCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +74,7 @@ func (m *DynamicMCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Set up the SSE transport-based MCP proxy server for the global /sse endpoint
 		server.NewSSEServer(
 			mcpProxyServer,
-			server.WithStaticBasePath(mcpServerName),
+			server.WithStaticBasePath("/mcp/github"),
 		).ServeHTTP(w, r)
 	}
 }

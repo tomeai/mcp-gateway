@@ -19,6 +19,8 @@ type Server struct {
 
 	mcpClientService *repository.McpClientService
 
+	dynamicMCPServer *DynamicMCPServer
+
 	otelProviders *telemetry.Providers
 	metrics       telemetry.CustomMetrics
 
@@ -34,11 +36,12 @@ func NewOtel(ctx *cli.Context) (*telemetry.Providers, error) {
 	return otelProviders, err
 }
 
-func NewServer(ctx *cli.Context, otelProviders *telemetry.Providers, mcpClientService *repository.McpClientService, logger *zap.Logger) (*Server, error) {
+func NewServer(ctx *cli.Context, dynamicMCPServer *DynamicMCPServer, otelProviders *telemetry.Providers, mcpClientService *repository.McpClientService, logger *zap.Logger) (*Server, error) {
 	mcpMetrics := telemetry.NewNoopCustomMetrics()
 
 	s := &Server{
 		mcpClientService: mcpClientService,
+		dynamicMCPServer: dynamicMCPServer,
 		otelProviders:    otelProviders,
 		metrics:          mcpMetrics,
 		logger:           logger,
@@ -82,7 +85,7 @@ func (s *Server) setupRouter() (*http.ServeMux, error) {
 
 	httpMux.Handle("/", r)
 
-	httpMux.Handle("/{type}/{name}/", NewDynamicMCPServer())
+	httpMux.Handle("/{type}/{name}/", s.dynamicMCPServer)
 
 	return httpMux, nil
 }

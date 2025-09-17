@@ -62,6 +62,7 @@ func (app *App) Run(args []string) {
 			}),
 		}
 		options = append(options,
+			fx.Provide(api.NewDynamicMCPServer),
 			fx.Provide(api.NewOtel),
 			fx.Provide(db.NewDBConnection),
 			fx.Provide(repository.NewMCPClientService),
