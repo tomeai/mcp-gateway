@@ -86,7 +86,7 @@ func (s *Server) setupRouter() (*http.ServeMux, error) {
 
 	httpMux.Handle("/", r)
 
-	httpMux.Handle("/mcp/{name}/", s.dynamicMCPServer)
+	httpMux.Handle("/mcp/{name}", s.chainMiddleware(s.dynamicMCPServer))
 
 	return httpMux, nil
 }

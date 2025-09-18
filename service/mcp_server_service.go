@@ -6,13 +6,16 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/tomeai/mcp-gateway/model"
 	"github.com/tomeai/mcp-gateway/repository"
+	"github.com/tomeai/mcp-gateway/utils"
 	"go.uber.org/zap"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type DynamicMCPServer struct {
 	mcpServerService *repository.McpServerService
+	mcpServerMcp     sync.Map
 	logger           *zap.Logger
 }
 
@@ -24,38 +27,21 @@ func NewDynamicMCPServer(mcpServerService *repository.McpServerService, logger *
 	}
 }
 
-func (m *DynamicMCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	mcpServerName := r.PathValue("name")
-	if mcpServerName == "" {
-		http.Error(w, "mcpServerName is nil", http.StatusBadRequest)
-		return
-	}
-
-	m.logger.Info("dynamic mcp", zap.String("mcpServerName", mcpServerName))
-	mcpServerConfig, err := m.mcpServerService.GetMcpServer("gage", mcpServerName)
-	// store
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	timeCtx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
+func (m *DynamicMCPServer) buildMcpServer(mcpServer *model.McpServer) (*server.MCPServer, error) {
+	timeCtx, cancel := context.WithTimeout(context.Background(), time.Minute*1)
 	defer cancel()
 	clientConfig := &model.MCPClientConfig{}
-	err = sonic.Unmarshal(mcpServerConfig.ServerConfig, clientConfig)
+	err := sonic.Unmarshal(mcpServer.ServerConfig, clientConfig)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, err
 	}
 	mcpClient, err := NewMCPClientService("wemcp-gateway", clientConfig, m.logger)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, err
 	}
 	// server: streamable http
 	mcpProxyServer := server.NewMCPServer(
-		mcpServerName,
+		mcpServer.ServerName,
 		"0.0.1",
 		server.WithResourceCapabilities(true, true),
 		server.WithRecovery(),
@@ -64,8 +50,42 @@ func (m *DynamicMCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// add mcp server
 	err = mcpClient.AddToMCPServer(timeCtx, mcpProxyServer)
 	if err != nil {
+		return nil, err
+	}
+	return mcpProxyServer, nil
+}
+
+func (m *DynamicMCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var (
+		mcpProxyServer *server.MCPServer
+		err            error
+	)
+
+	mcpServerName := r.PathValue("name")
+	if mcpServerName == "" {
+		http.Error(w, "mcpServerName is nil", http.StatusBadRequest)
+		return
+	}
+
+	m.logger.Info("dynamic mcp", zap.String("mcpServerName", mcpServerName))
+	mcpServer, err := m.mcpServerService.GetMcpServer("gage", mcpServerName)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	serverMd5 := utils.Md5String(string(mcpServer.ServerConfig))
+	m.logger.Info("serverMd5", zap.String("serverMd5", serverMd5), zap.String("serverConfig", string(mcpServer.ServerConfig)))
+	if v, ok := m.mcpServerMcp.Load(serverMd5); !ok {
+		// 构建
+		mcpProxyServer, err = m.buildMcpServer(mcpServer)
+		m.mcpServerMcp.Store(serverMd5, mcpProxyServer)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		mcpProxyServer = v.(*server.MCPServer)
 	}
 
 	server.NewStreamableHTTPServer(
