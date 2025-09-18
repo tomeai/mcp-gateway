@@ -96,7 +96,7 @@ configs:
       scrape_configs:
         - job_name: 'wemcp-gateway'
           static_configs:
-            - targets: ['wemcp-gateway:8080']
+            - targets: ['wemcp-gateway:8000']
           metrics_path: '/metrics'
           scrape_interval: 15s
 
