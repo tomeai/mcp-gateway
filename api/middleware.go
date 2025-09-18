@@ -1,56 +1,36 @@
 package api
 
 import (
-	"context"
-	"github.com/gin-gonic/gin"
-	"github.com/tomeai/mcp-gateway/model"
+	"go.uber.org/zap"
 	"net/http"
 	"strings"
 )
 
-// checkAuthForMcpProxyAccess is middleware for MCP proxy that checks for a valid MCP client token
-// if the server is in production mode.
-// In development mode, mcp clients do not require auth to access the MCP proxy.
-func (s *Server) checkAuthForMcpProxyAccess() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		mode, exists := c.Get("mode")
-		if !exists {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "server mode not found in context"})
-			return
-		}
-		m, ok := mode.(model.ServerMode)
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "invalid server mode in context"})
-			return
-		}
+type MiddlewareFunc func(http.Handler) http.Handler
 
-		// the gin context doesn't get passed down to the MCP proxy server, so we need to
-		// set values in the underlying request's context to be able to access them from proxy.
-		ctx := context.WithValue(c.Request.Context(), "mode", m)
-		c.Request = c.Request.WithContext(ctx)
+func (s *Server) chainMiddleware(h http.Handler, middlewares ...MiddlewareFunc) http.Handler {
+	ms := []MiddlewareFunc{
+		s.newAuthMiddleware(),
+	}
+	ms = append(ms, middlewares...)
+	for _, mw := range ms {
+		h = mw(h)
+	}
+	return h
+}
 
-		if m == model.ModeDev {
-			// no auth is required in case of dev mode
-			c.Next()
-			return
-		}
+func (s *Server) newAuthMiddleware() MiddlewareFunc {
 
-		authHeader := c.GetHeader("Authorization")
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing MCP client access token"})
-			return
-		}
-		client, err := s.mcpClientService.GetClientByToken(token)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid MCP client token"})
-			return
-		}
-
-		// inject the authenticated MCP client in context for the proxy to use
-		ctx = context.WithValue(c.Request.Context(), "client", client)
-		c.Request = c.Request.WithContext(ctx)
-
-		c.Next()
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := r.Header.Get("Authorization")
+			token = strings.TrimSpace(strings.TrimPrefix(token, "Bearer "))
+			if token == "" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			s.logger.Info("New Auth Token", zap.String("token", token))
+			next.ServeHTTP(w, r)
+		})
 	}
 }
