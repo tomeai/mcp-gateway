@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+	"time"
+)
 
 type StdioMCPClientConfig struct {
 	Command string            `json:"command"`
@@ -46,4 +50,13 @@ type MCPClientConfig struct {
 	URL     string            `json:"url,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`
 	Timeout time.Duration     `json:"timeout,omitempty"`
+}
+
+type McpServer struct {
+	gorm.Model
+
+	UserId       string         `json:"user_id" gorm:"not null;index:idx_user_server,unique"`
+	ServerName   string         `json:"server_name" gorm:"not null;index:idx_user_server,unique"`
+	ServerConfig datatypes.JSON `json:"server_config" gorm:"type:jsonb; not null"`
+	Env          datatypes.JSON `json:"env" gorm:"type:jsonb; default null"`
 }
