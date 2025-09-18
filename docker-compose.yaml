@@ -1,32 +1,19 @@
 services:
-  wemcp-db:
-    image: postgres:latest
-    container_name: wemcp-db
-    environment:
-      POSTGRES_USER: wemcp
-      POSTGRES_PASSWORD: wemcp123456
-      POSTGRES_DB: wemcp
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: wemcp-gateway
+    restart: always
     ports:
-      - "5432:5432"
+      - "80:80"
+      - "443:443"
     volumes:
-      - db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD-SHELL", "PGPASSWORD=wemcp123456 pg_isready -U wemcp" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  wemcp-pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: wemcp-pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@wemcp.cn
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "5050:80"
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - wemcp_gateway_network
     depends_on:
-      - wemcp-db
+      - wemcp-gateway
 
   wemcp-gateway:
     build:
@@ -38,15 +25,51 @@ services:
       SERVER_MODE: ${SERVER_MODE:-production}
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
     ports:
-      - "8080:8080"
+      - "8000:8000"
     depends_on:
-      db:
+      wemcp-gateway-db:
         condition: service_healthy
+    networks:
+      - wemcp_gateway_network
     restart: always
 
-  wemcp-prometheus:
+  wemcp-gateway-db:
+    image: postgres:latest
+    container_name: wemcp-gateway-db
+    environment:
+      POSTGRES_USER: wemcp
+      POSTGRES_PASSWORD: wemcp123456
+      POSTGRES_DB: wemcp
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - wemcp_gateway_network
+    healthcheck:
+      test: [ "CMD-SHELL", "PGPASSWORD=wemcp123456 pg_isready -U wemcp" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  wemcp-gateway-pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: wemcp-gateway-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@wemcp.cn
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    networks:
+      - wemcp_gateway_network
+    depends_on:
+      - wemcp-gateway-db
+
+
+  wemcp-gateway-prometheus:
     image: prom/prometheus:v2.53.0
-    container_name: wemcp-prometheus
+    container_name: wemcp-gateway-prometheus
     ports:
       - "9090:9090"
     command:
@@ -59,6 +82,8 @@ services:
         target: /etc/prometheus/prometheus.yml
     depends_on:
       - wemcp-gateway
+    networks:
+      - wemcp_gateway_network
     restart: unless-stopped
 
 configs:
@@ -75,6 +100,17 @@ configs:
           metrics_path: '/metrics'
           scrape_interval: 15s
 
+networks:
+  wemcp_gateway_network:
+    name: wemcp_gateway_network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.10.10.0/24
+
 volumes:
   db_data:
   prometheus_data:
+  caddy_data:
+  caddy_config:

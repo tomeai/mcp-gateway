@@ -1,35 +1,20 @@
-# =========================
-# Build Stage
-# =========================
-FROM golang:1.24-alpine AS builder
-
-# 安装依赖
-RUN apk add --no-cache git ca-certificates upx
-
+FROM golang:1.24 AS builder
 WORKDIR /app
-
-# 拷贝 go.mod 和 go.sum 先下载依赖（缓存优化）
 COPY go.mod go.sum ./
 RUN go mod download
-
-# 拷贝源码并构建
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /wemcp-gateway .
+RUN make build
 
-# （可选）压缩二进制，减少体积
-RUN upx --lzma /wemcp-gateway || true
+FROM node:lts-bookworm-slim AS node
 
-# =========================
-# Runtime Stage
-# =========================
-FROM gcr.io/distroless/base
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
-WORKDIR /
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+    ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
+    ln -s /usr/local/bin/node /usr/local/bin/nodejs
 
-# 复制构建产物
-COPY --from=builder /wemcp-gateway /wemcp-gateway
-
-EXPOSE 8080
-
-ENTRYPOINT ["/wemcp-gateway"]
-CMD ["start"]
+COPY --from=builder /app/build/mcp-gateway /mcp-gateway
+ENTRYPOINT ["/mcp-gateway"]
+CMD ["--port", "8000"]
