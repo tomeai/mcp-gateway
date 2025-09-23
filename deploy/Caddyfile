@@ -1,0 +1,3 @@
+registry.wemcp.cn  {
+    reverse_proxy wemcp-gateway:8000
+}

@@ -37,3 +37,6 @@ dist/
 # Local dev
 mcpjungle
 mcp.db
+
+# build
+build/

@@ -7,7 +7,7 @@ GO_BUILD=CGO_ENABLED=0 go build $(LD_FLAGS)
 
 .PHONY: build
 build:
-	$(GO_BUILD) -o $(BUILD_DIR)/ ./...
+	$(GO_BUILD) -o $(BUILD_DIR)/mcp-gateway ./cmd/.
 
 .PHONY: buildLinuxX86
 buildLinuxX86:
